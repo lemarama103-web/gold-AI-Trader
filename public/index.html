@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gold AI Trader Cloud</title>
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Gold AI Trader","short_name":"Gold AI","start_url":"./","display":"standalone","background_color":"#121212","theme_color":"#121212"}'>
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --accent: #00e676; --danger: #ff1744; --text: #ffffff; --warn: #ffab00; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 0; display: flex; justify-content: center; }
+        .app-container { width: 100%; max-width: 480px; padding: 20px; box-sizing: border-box; }
+        #login-screen { display: flex; flex-direction: column; justify-content: center; height: 100vh; text-align: center; }
+        input[type="password"], input[type="text"] { padding: 12px; border-radius: 8px; border: 1px solid #333; background: var(--panel); color: white; margin-bottom: 15px; width: 100%; box-sizing: border-box; }
+        button { padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: black; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; }
+        button:active { opacity: 0.7; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #dashboard { display: none; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .badge { background: #333; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: var(--accent); }
+        .card { background: var(--panel); border-radius: 12px; padding: 15px; margin-bottom: 15px; }
+        .card h3 { margin-top: 0; font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .flex-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .scanner-item { border-bottom: 1px solid #333; padding: 10px 0; }
+        .scanner-item:last-child { border-bottom: none; }
+        .buy { color: var(--accent); font-weight: bold; }
+        .sell { color: var(--danger); font-weight: bold; }
+        .neutral { color: #888; font-weight: bold; }
+        .data-grid { font-size: 11px; color: #ccc; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px; }
+        .log-box { background: #000; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 10px; color: #0f0; max-height: 150px; overflow-y: auto; margin-top: 10px; }
+        .balance-display { font-size: 24px; font-weight: bold; color: var(--accent); }
+        .status-dot { height: 10px; width: 10px; background-color: var(--accent); border-radius: 50%; display: inline-block; margin-right: 8px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen">
+        <h2>GOLD AI TRADER</h2>
+        <p style="color: #888;">Cloud Backend v4</p>
+        <input type="password" id="app-password" placeholder="Password (Hint: 2004)">
+        <button onclick="login()">Access Terminal</button>
+        <p id="login-error" style="color: var(--danger); display: none;">Incorrect Password</p>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard">
+        <div class="header">
+            <div>
+                <h2 style="margin:0;">Gold AI Trader</h2>
+                <span class="badge" id="moderator-badge">Moderator: Ramadhan</span>
+            </div>
+            <button onclick="logout()" style="width: auto; padding: 6px 12px; background: #333; color: white;">Exit</button>
+        </div>
+
+        <!-- Account Info -->
+        <div class="card">
+            <h3>Account Overview <span class="status-dot"></span></h3>
+            <div class="flex-row">
+                <span>Balance:</span>
+                <span class="balance-display" id="balance">$0.00</span>
+            </div>
+            <div class="flex-row">
+                <span>Equity:</span>
+                <span id="equity">$0.00</span>
+            </div>
+            <div class="flex-row">
+                <span>Free Margin:</span>
+                <span id="free-margin">$0.00</span>
+            </div>
+        </div>
+
+        <!-- AI Engine & Chart Scanner -->
+        <div class="card">
+            <h3>AI Engine (Chart Scanner)</h3>
+            <div id="scanner-results">
+                <p style="font-size:12px; color:#888;">Click "Force AI Scan" to fetch signals.</p>
+            </div>
+            <button onclick="runAIScan()" style="background: #333; color: white; margin-top: 10px;">Force AI Scan</button>
+        </div>
+
+        <!-- Connected EAs -->
+        <div class="card">
+            <h3>Connected EAs</h3>
+            <div class="flex-row">
+                <span>Gold Scalper EA (XAUUSD)</span>
+                <span style="color: var(--accent); font-size: 12px;" id="ea-status">Active</span>
+            </div>
+            <div class="log-box" id="log-box">[System] Connected to Cloud Backend...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_URL = '/api';
+
+    function log(message) {
+        const logBox = document.getElementById('log-box');
+        const time = new Date().toLocaleTimeString();
+        logBox.innerHTML += `<br>[${time}] ${message}`;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function login() {
+        const password = document.getElementById('app-password').value;
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                document.getElementById('moderator-badge').innerText = `Moderator: ${data.name}`;
+                log("App unlocked. Welcome, Ramadhan.");
+                fetchAccountInfo();
+                runAIScan();
+            } else {
+                document.getElementById('login-error').style.display = 'block';
+            }
+        } catch (error) {
+            alert("Cannot connect to backend. Is the server running?");
+        }
+    }
+
+    function logout() {
+        document.getElementById('dashboard').style.display = 'none';
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('app-password').value = '';
+    }
+
+    async function fetchAccountInfo() {
+        try {
+            const response = await fetch(`${API_URL}/account-info`);
+            const data = await response.json();
+            document.getElementById('balance').innerText = `$${data.balance.toFixed(2)}`;
+            document.getElementById('equity').innerText = `$${data.equity.toFixed(2)}`;
+            document.getElementById('free-margin').innerText = `$${data.freeMargin.toFixed(2)}`;
+        } catch (error) {
+            log("❌ Failed to fetch account info.");
+        }
+    }
+
+    async function runAIScan() {
+        const container = document.getElementById('scanner-results');
+        container.innerHTML = '<p style="font-size:12px; color:#888;">AI analyzing market structure...</p>';
+        
+        try {
+            const response = await fetch(`${API_URL}/scan`);
+            const data = await response.json();
+            
+            let html = '';
+            data.forEach(p => {
+                const dirClass = p.direction === 'BUY' ? 'buy' : (p.direction === 'SELL' ? 'sell' : 'neutral');
+                const btnBg = p.direction === 'BUY' ? 'var(--accent)' : (p.direction === 'SELL' ? 'var(--danger)' : '#333');
+                
+                html += `
+                    <div class="scanner-item">
+                        <div class="flex-row">
+                            <strong>${p.symbol}</strong>
+                            <span class="${dirClass}">${p.direction} (${p.signal})</span>
+                        </div>
+                        <div class="data-grid">
+                            <span>Entry: ${p.entry}</span>
+                            <span>SL: ${p.sl}</span>
+                            <span>TP1: ${p.tp1}</span>
+                            <span>TP2: ${p.tp2}</span>
+                            <span>TP3: ${p.tp3}</span>
+                            <span>RSI: ${p.rsi}</span>
+                        </div>
+                        <button onclick="executeTrade('${p.symbol}', '${p.direction}')" style="margin-top: 8px; background: ${btnBg}; color: black; font-size: 12px;" ${p.direction === 'NEUTRAL' ? 'disabled' : ''}>
+                            Execute Signal
+                        </button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        } catch (error) {
+            container.innerHTML = '<p style="color: var(--danger);">Error connecting to Cloud AI.</p>';
+        }
+    }
+
+    async function executeTrade(symbol, direction) {
+        if(direction === 'NEUTRAL') return;
+        log(`Sending ${direction} order for ${symbol} to cloud...`);
+        try {
+            const response = await fetch(`${API_URL}/trade`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol, direction, volume: 0.01 })
+            });
+            const data = await response.json();
+            log(`✅ Trade executed! Order ID: ${data.orderId}`);
+        } catch (error) {
+            log(`❌ Trade failed.`);
+        }
+    }
+</script>
+</body>
+</html>
